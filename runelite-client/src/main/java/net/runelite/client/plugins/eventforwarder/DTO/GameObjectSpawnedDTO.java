@@ -1,11 +1,9 @@
-package net.runelite.client.plugins.eventforwarder;
+package net.runelite.client.plugins.eventforwarder.DTO;
 
 import net.runelite.api.events.GameObjectSpawned;
 
-public class GameObjectSpawnedDTO
+public class GameObjectSpawnedDTO extends RuneliteEvent
 {
-    public String eventType = "GameObjectSpawned";
-
     // From Tile
     public int tileX;
     public int tileY;
@@ -23,6 +21,7 @@ public class GameObjectSpawnedDTO
 
     public GameObjectSpawnedDTO(GameObjectSpawned event)
     {
+        this.setType("GameObjectSpawned");
         this.tileX = event.getTile().getWorldLocation().getX();
         this.tileY = event.getTile().getWorldLocation().getY();
         this.tilePlane = event.getTile().getWorldLocation().getPlane();

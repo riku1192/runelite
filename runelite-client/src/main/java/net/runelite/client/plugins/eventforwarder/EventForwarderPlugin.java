@@ -2,10 +2,15 @@ package net.runelite.client.plugins.eventforwarder;
 
 import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.Client;
+import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.eventforwarder.DTO.AnimationChangedDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -13,6 +18,8 @@ import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+
+import javax.inject.Inject;
 
 @Slf4j
 @PluginDescriptor(
@@ -25,6 +32,9 @@ public class EventForwarderPlugin extends Plugin
     private final Gson gson = new Gson();
     private final List<EventForwarderHandler> handlers = new CopyOnWriteArrayList<>();
     private volatile boolean running = true;
+    
+    @Inject
+    private Client client;
 
     @Override
     protected void startUp() throws Exception
@@ -69,10 +79,36 @@ public class EventForwarderPlugin extends Plugin
     @Subscribe
     public void onGameObjectSpawned(GameObjectSpawned event)
     {
-        GameObjectSpawnedDTO gameObjectSpawnedDTO = new GameObjectSpawnedDTO(event);
-        String json = gson.toJson(gameObjectSpawnedDTO);
+        RuneliteEvent dto = new GameObjectSpawnedDTO(event);
+        String json = gson.toJson(dto);
         for (EventForwarderHandler handler : handlers) {
             handler.send(json);
+        }
+    }
+    
+    @Subscribe
+    public void onAnimationChanged(AnimationChanged event)
+    {
+        if (event.getActor() == client.getLocalPlayer())
+        {
+            int anim = client.getLocalPlayer().getAnimation();
+            System.out.println("Player animation changed: " + anim);
+
+            // -1 means idle
+            if (anim == -1)
+            {
+                System.out.println("Player is idle.");
+            }
+            else
+            {
+                System.out.println("Player is doing animation ID: " + anim);
+            }
+            RuneliteEvent dto = new AnimationChangedDTO(event);
+            String json = gson.toJson(dto);
+            for (EventForwarderHandler handler : handlers) {
+                System.out.println("Sending some JSON " + json);
+                handler.send(json);
+            }
         }
     }
 
