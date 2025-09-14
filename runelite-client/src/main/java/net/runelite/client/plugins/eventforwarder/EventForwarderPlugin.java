@@ -3,8 +3,18 @@ package net.runelite.client.plugins.eventforwarder;
 import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
+import net.runelite.api.Constants;
+import net.runelite.api.GameObject;
+import net.runelite.api.ItemLayer;
+import net.runelite.api.Player;
+import net.runelite.api.Scene;
+import net.runelite.api.Tile;
+import net.runelite.api.TileItem;
+import net.runelite.api.WorldView;
+import net.runelite.api.Node;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameObjectSpawned;
+import net.runelite.api.events.GameTick;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.Widget;
@@ -14,6 +24,8 @@ import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
 import net.runelite.client.plugins.eventforwarder.DTO.AnimationChangedDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClickableGameObjectDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClickableTileItemDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
@@ -36,6 +48,7 @@ public class EventForwarderPlugin extends Plugin
     private ServerSocket serverSocket;
     private final Gson gson = new Gson();
     private final List<EventForwarderHandler> handlers = new CopyOnWriteArrayList<>();
+    private static final int MAX_DISTANCE = 2400;
     private volatile boolean running = true;
     
     @Inject
@@ -116,6 +129,7 @@ public class EventForwarderPlugin extends Plugin
             }
         }
     }
+    
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded event)
     {
@@ -164,10 +178,15 @@ public class EventForwarderPlugin extends Plugin
         }
     }
 
+    // @Subscribe
+    // public void onGameTick(GameTick tick){
+    //     WorldView worldView = client.getTopLevelWorldView();
+    //     scanTiles(worldView);
+    // }
 
     //End subscritions
 
-    //Start Handler
+    //Start Server Handler
     private static class EventForwarderHandler extends Thread
     {
         private final Socket clientSocket;
@@ -201,4 +220,74 @@ public class EventForwarderPlugin extends Plugin
             } catch (IOException ignored) {}
         }
     }
+    //End Server Handler
+
+    //Start helper methods
+
+    private void scanTiles(WorldView worldView){
+        //Displays coords of every game object and ground item
+        Scene scene = worldView.getScene();
+        Tile[][][] tiles = scene.getTiles();
+
+        int z = worldView.getPlane();
+        
+        for (int x = 0; x < Constants.SCENE_SIZE; ++x)
+        {
+            for (int y = 0; y < Constants.SCENE_SIZE; ++y)
+            {
+                Tile tile = tiles[z][x][y];
+                
+                if (tile == null)
+                {
+                    continue;
+                }
+                
+                Player player = client.getLocalPlayer();
+                if (player == null)
+                {
+                    continue;
+                }
+                
+                GameObject[] gameObjects = tile.getGameObjects();
+                if (gameObjects != null)
+                {
+                    for (GameObject gameObject : gameObjects)
+                    {   
+                        if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()))
+                        {
+                            // System.out.println("Game Object found. ID: " + gameObject.getId() + " X: " + gameObject.getX() + " Y: " + gameObject.getY());
+                            RuneliteEvent dto = new ClickableGameObjectDTO(gameObject, x, y);
+                            String json = gson.toJson(dto);
+                            for (EventForwarderHandler handler : handlers) {
+                                System.out.println("Sending some JSON " + json);
+                                handler.send(json);
+                            }
+                        }
+                    }
+                }
+
+                ItemLayer itemLayer = tile.getItemLayer();
+                if (itemLayer != null)
+                {
+                    if (player.getLocalLocation().distanceTo(itemLayer.getLocalLocation()) <= MAX_DISTANCE)
+                    {
+                        Node current = itemLayer.getTop();
+                        while (current instanceof TileItem)
+                        {
+                            TileItem item = (TileItem) current;
+                            // System.out.println("Ground Item found. ID: " + item.getId() + " X: " + x + " Y: " + y);
+                            RuneliteEvent dto = new ClickableTileItemDTO(item, x, y);
+                            String json = gson.toJson(dto);
+                            for (EventForwarderHandler handler : handlers) {
+                                System.out.println("Sending some JSON " + json);
+                                handler.send(json);
+                            }
+                            current = current.getNext();
+                        }
+                    }
+                }
+            }
+        }
+    }
+        //End helper methods
 }
