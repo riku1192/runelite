@@ -2,6 +2,7 @@ package net.runelite.client.plugins.diagnostics;
 
 import net.runelite.api.Client;
 import net.runelite.api.NPC;
+import net.runelite.api.Perspective;
 import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
