@@ -1,5 +1,7 @@
 package net.runelite.client.plugins.eventforwarder.DTO;
 
+import java.util.Objects;
+
 public class ClickableDTO extends RuneliteEvent {
     String clickableType;
     Integer clickableId;
@@ -35,8 +37,27 @@ public class ClickableDTO extends RuneliteEvent {
     }
 
     public Integer getClickableY(){
-        return clickableX;
+        return clickableY;
     }
 
+    public String toString(){
+        return super.toString() + ", [clickableType="+ clickableType + "]" 
+                    + ", [clickableId="+ clickableId + "]" 
+                    + ", [clickableX="+ clickableX + "]" 
+                    + ", [clickableY="+ clickableY + "]";
+    }
+    
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof RuneliteEvent)) return false;
+        RuneliteEvent that = (RuneliteEvent) o;
+        return Objects.equals(type, that.type);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(type);
+    }
 
 }

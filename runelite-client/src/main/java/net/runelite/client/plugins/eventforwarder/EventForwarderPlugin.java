@@ -1,6 +1,8 @@
 package net.runelite.client.plugins.eventforwarder;
 
 import com.google.gson.Gson;
+import com.google.inject.Provides;
+
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
@@ -20,10 +22,13 @@ import net.runelite.api.events.WidgetLoaded;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetID;
 import net.runelite.api.widgets.WidgetInfo;
+import net.runelite.client.config.ConfigManager;
 import net.runelite.client.eventbus.Subscribe;
 import net.runelite.client.plugins.Plugin;
 import net.runelite.client.plugins.PluginDescriptor;
+import net.runelite.client.plugins.diagnostics.DiagnosticsConfig;
 import net.runelite.client.plugins.eventforwarder.DTO.AnimationChangedDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClickableDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableGameObjectDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableTileItemDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
@@ -33,7 +38,10 @@ import java.io.IOException;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 import javax.inject.Inject;
@@ -49,10 +57,21 @@ public class EventForwarderPlugin extends Plugin
     private final Gson gson = new Gson();
     private final List<EventForwarderHandler> handlers = new CopyOnWriteArrayList<>();
     private static final int MAX_DISTANCE = 2400;
+    private final Map<String, RuneliteEvent> knownEntities = new HashMap<>();
+	static final String CONFIG_GROUP_KEY = "eventforwarderconfig";
     private volatile boolean running = true;
     
     @Inject
     private Client client;
+
+    @Inject
+	private EventForwarderConfig config;
+    
+    @Provides
+    private EventForwarderConfig provideConfig(ConfigManager configManager)
+    {
+        return configManager.getConfig(EventForwarderConfig.class);
+    }
 
     @Override
     protected void startUp() throws Exception
@@ -129,7 +148,7 @@ public class EventForwarderPlugin extends Plugin
             }
         }
     }
-    
+
     @Subscribe
     public void onWidgetLoaded(WidgetLoaded event)
     {
@@ -178,11 +197,18 @@ public class EventForwarderPlugin extends Plugin
         }
     }
 
-    // @Subscribe
-    // public void onGameTick(GameTick tick){
-    //     WorldView worldView = client.getTopLevelWorldView();
-    //     scanTiles(worldView);
-    // }
+    @Subscribe
+    public void onGameTick(GameTick tick){
+        if (config.toggleOnGameTick() == true ){
+            WorldView worldView = client.getTopLevelWorldView();
+            DiffPayloadDTO diffPayloadDTO = scanTilesCreatePayloadUpdateKnownEntities(worldView);
+            System.out.println(gson.toJson(diffPayloadDTO));
+            String json = gson.toJson(diffPayloadDTO);
+            for (EventForwarderHandler handler : handlers) {
+                handler.send(json);
+            }
+        }
+    }
 
     //End subscritions
 
@@ -224,8 +250,11 @@ public class EventForwarderPlugin extends Plugin
 
     //Start helper methods
 
-    private void scanTiles(WorldView worldView){
-        //Displays coords of every game object and ground item
+    //Displays coords of every game object and ground item
+    private DiffPayloadDTO scanTilesCreatePayloadUpdateKnownEntities(WorldView worldView){
+
+        Map<String, RuneliteEvent> current = new HashMap<>();
+
         Scene scene = worldView.getScene();
         Tile[][][] tiles = scene.getTiles();
 
@@ -256,12 +285,9 @@ public class EventForwarderPlugin extends Plugin
                         if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()))
                         {
                             // System.out.println("Game Object found. ID: " + gameObject.getId() + " X: " + gameObject.getX() + " Y: " + gameObject.getY());
+                            String key = "GameObject:" + gameObject.getId() + ":x=" +x + ":y=" + y;
                             RuneliteEvent dto = new ClickableGameObjectDTO(gameObject, x, y);
-                            String json = gson.toJson(dto);
-                            for (EventForwarderHandler handler : handlers) {
-                                System.out.println("Sending some JSON " + json);
-                                handler.send(json);
-                            }
+                            current.put(key, dto);
                         }
                     }
                 }
@@ -271,23 +297,66 @@ public class EventForwarderPlugin extends Plugin
                 {
                     if (player.getLocalLocation().distanceTo(itemLayer.getLocalLocation()) <= MAX_DISTANCE)
                     {
-                        Node current = itemLayer.getTop();
-                        while (current instanceof TileItem)
+                        Node currentTopLayer = itemLayer.getTop();
+                        while (currentTopLayer instanceof TileItem)
                         {
-                            TileItem item = (TileItem) current;
+                            TileItem item = (TileItem) currentTopLayer;
                             // System.out.println("Ground Item found. ID: " + item.getId() + " X: " + x + " Y: " + y);
+                            String key = "TileItem:" + item.getId() + ":x=" +x + ":y=" + y;
                             RuneliteEvent dto = new ClickableTileItemDTO(item, x, y);
-                            String json = gson.toJson(dto);
-                            for (EventForwarderHandler handler : handlers) {
-                                System.out.println("Sending some JSON " + json);
-                                handler.send(json);
-                            }
-                            current = current.getNext();
+                            current.put(key, dto);
+                            currentTopLayer = currentTopLayer.getNext();
                         }
                     }
                 }
             }
         }
+        // return clickableDTOs;
+        // Diffing
+        List<RuneliteEvent> added = new ArrayList<>();
+        List<String> removed = new ArrayList<>();
+        List<RuneliteEvent> updated = new ArrayList<>();
+
+        for (Map.Entry<String, RuneliteEvent> entry : current.entrySet())
+        {
+            String key = entry.getKey();
+            RuneliteEvent dto = entry.getValue();
+
+            if (!knownEntities.containsKey(key))
+            {
+                added.add(dto);
+            }
+            else if (!dto.equals(knownEntities.get(key)))
+            {
+                ClickableDTO tempDTO = (ClickableDTO) dto; 
+                if (tempDTO.getClickableType().equalsIgnoreCase("Clickable game object")){
+                    tempDTO = (ClickableGameObjectDTO) dto;
+                    System.out.println("Mismatch on key: " + key);
+                    System.out.println("New DTO: " + tempDTO.toString());
+                    tempDTO = (ClickableGameObjectDTO) knownEntities.get(key);
+                    System.out.println("Old DTO: " + tempDTO.toString());
+                }
+                updated.add(dto);
+            }
+        }
+
+        for (String oldKey : knownEntities.keySet())
+        {
+            if (!current.containsKey(oldKey))
+            {
+                removed.add(oldKey);
+            }
+        }
+
+        // Create Payload
+        DiffPayloadDTO payload = new DiffPayloadDTO(added, removed, updated);
+
+        // Update state
+        knownEntities.clear();
+        knownEntities.putAll(current);
+
+        //Return payload
+        return payload;
     }
         //End helper methods
 }

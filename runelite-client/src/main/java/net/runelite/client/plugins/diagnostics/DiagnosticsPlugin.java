@@ -35,15 +35,15 @@ public class DiagnosticsPlugin extends Plugin
 	@Inject
 	private DiagnosticsConfig config;
     
-    // Not Injected Variables used in this plugin
-    private WorldView worldView;
-    private Player player;
-
     @Provides
     private DiagnosticsConfig provideConfig(ConfigManager configManager)
     {
         return configManager.getConfig(DiagnosticsConfig.class);
     }
+    
+    // Not Injected Variables used in this plugin
+    private WorldView worldView;
+    private Player player;
 
 	@Override
 	protected void startUp()
