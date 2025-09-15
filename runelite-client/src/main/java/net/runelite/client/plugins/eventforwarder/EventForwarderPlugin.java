@@ -31,10 +31,13 @@ import net.runelite.client.plugins.eventforwarder.DTO.AnimationChangedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableGameObjectDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableTileItemDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClientRequestDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -54,18 +57,22 @@ import javax.inject.Inject;
 public class EventForwarderPlugin extends Plugin
 {
     private ServerSocket serverSocket;
-    private final Gson gson = new Gson();
+    private static final Gson gson = new Gson();
     private final List<EventForwarderHandler> handlers = new CopyOnWriteArrayList<>();
     private static final int MAX_DISTANCE = 2400;
-    private final Map<String, RuneliteEvent> knownEntities = new HashMap<>();
+    private static final Map<String, RuneliteEvent> knownEntities = new HashMap<>();
 	static final String CONFIG_GROUP_KEY = "eventforwarderconfig";
     private volatile boolean running = true;
+    private static volatile ClientRequestDTO clientRequest;
     
     @Inject
     private Client client;
 
     @Inject
 	private EventForwarderConfig config;
+
+    @Inject
+    private static ConfigManager configManager;
     
     @Provides
     private EventForwarderConfig provideConfig(ConfigManager configManager)
@@ -202,10 +209,12 @@ public class EventForwarderPlugin extends Plugin
         if (config.toggleOnGameTick() == true ){
             WorldView worldView = client.getTopLevelWorldView();
             DiffPayloadDTO diffPayloadDTO = scanTilesCreatePayloadUpdateKnownEntities(worldView);
-            System.out.println(gson.toJson(diffPayloadDTO));
-            String json = gson.toJson(diffPayloadDTO);
-            for (EventForwarderHandler handler : handlers) {
-                handler.send(json);
+            if (diffPayloadDTO != null) {
+                System.out.println(gson.toJson(diffPayloadDTO));
+                String json = gson.toJson(diffPayloadDTO);
+                for (EventForwarderHandler handler : handlers) {
+                    handler.send(json);
+                }
             }
         }
     }
@@ -225,7 +234,10 @@ public class EventForwarderPlugin extends Plugin
         public void run() {
             try {
                 out = new PrintWriter(clientSocket.getOutputStream(), true);
-                // If you don’t care about client->server messages, you can skip reading input
+                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                while ((in.readLine()) != null) {
+                    this.handleIncomingEvent(in.readLine());
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -245,10 +257,21 @@ public class EventForwarderPlugin extends Plugin
                 }
             } catch (IOException ignored) {}
         }
+
+        //Handles incoming events and updates local variables
+        private void handleIncomingEvent(String incoming){
+            RuneliteEvent tempEvent = gson.fromJson(incoming, RuneliteEvent.class);
+            if (tempEvent.getType() == "clientRequest"){
+                clientRequest = gson.fromJson(incoming, ClientRequestDTO.class);
+                configManager.setConfiguration(EventForwarderPlugin.CONFIG_GROUP_KEY, "onGameTick", clientRequest.isSendByTick());
+                knownEntities.clear();
+            }
+        }
     }
     //End Server Handler
 
     //Start helper methods
+
 
     //Displays coords of every game object and ground item
     private DiffPayloadDTO scanTilesCreatePayloadUpdateKnownEntities(WorldView worldView){
@@ -282,7 +305,7 @@ public class EventForwarderPlugin extends Plugin
                 {
                     for (GameObject gameObject : gameObjects)
                     {   
-                        if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()))
+                        if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()) && clientRequest.getTargets().contains(gameObject.getId()))
                         {
                             // System.out.println("Game Object found. ID: " + gameObject.getId() + " X: " + gameObject.getX() + " Y: " + gameObject.getY());
                             String key = "GameObject:" + gameObject.getId() + ":x=" +x + ":y=" + y;
@@ -329,13 +352,13 @@ public class EventForwarderPlugin extends Plugin
             else if (!dto.equals(knownEntities.get(key)))
             {
                 ClickableDTO tempDTO = (ClickableDTO) dto; 
-                if (tempDTO.getClickableType().equalsIgnoreCase("Clickable game object")){
-                    tempDTO = (ClickableGameObjectDTO) dto;
-                    System.out.println("Mismatch on key: " + key);
-                    System.out.println("New DTO: " + tempDTO.toString());
-                    tempDTO = (ClickableGameObjectDTO) knownEntities.get(key);
-                    System.out.println("Old DTO: " + tempDTO.toString());
-                }
+                // if (tempDTO.getClickableType().equalsIgnoreCase("Clickable game object")){
+                //     tempDTO = (ClickableGameObjectDTO) dto;
+                //     System.out.println("Mismatch on key: " + key);
+                //     System.out.println("New DTO: " + tempDTO.toString());
+                //     tempDTO = (ClickableGameObjectDTO) knownEntities.get(key);
+                //     System.out.println("Old DTO: " + tempDTO.toString());
+                // }
                 updated.add(dto);
             }
         }
@@ -348,15 +371,20 @@ public class EventForwarderPlugin extends Plugin
             }
         }
 
-        // Create Payload
-        DiffPayloadDTO payload = new DiffPayloadDTO(added, removed, updated);
-
-        // Update state
-        knownEntities.clear();
-        knownEntities.putAll(current);
-
-        //Return payload
-        return payload;
+        //Check if our lists have anything in them. If not, return null so we don't waste time sending an empty message to the client.
+        if (added.size() == 0 && removed.size() == 0 && updated.size() == 0) {
+            return null;
+        } else {
+            // Create Payload
+            DiffPayloadDTO payload = new DiffPayloadDTO(added, removed, updated);
+    
+            // Update state
+            knownEntities.clear();
+            knownEntities.putAll(current);
+    
+            //Return payload
+            return payload;
+        }
     }
         //End helper methods
 }
