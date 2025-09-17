@@ -7,6 +7,8 @@ public class ClientRequestDTO extends RuneliteEvent {
     public ArrayList<Integer> targets;
 
     public ClientRequestDTO() {
+        sendByTick = false;
+        targets = new ArrayList<>();
     }
 
     public boolean isSendByTick() {

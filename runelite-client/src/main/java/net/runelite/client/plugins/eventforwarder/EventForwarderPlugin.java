@@ -8,17 +8,21 @@ import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameObject;
 import net.runelite.api.ItemLayer;
+import net.runelite.api.NPC;
 import net.runelite.api.Player;
+import net.runelite.api.Point;
 import net.runelite.api.Scene;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.WorldView;
 import net.runelite.api.Node;
+import net.runelite.api.Perspective;
 import net.runelite.api.events.AnimationChanged;
 import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
+import java.awt.geom.Rectangle2D;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetID;
 import net.runelite.api.widgets.WidgetInfo;
@@ -30,11 +34,15 @@ import net.runelite.client.plugins.diagnostics.DiagnosticsConfig;
 import net.runelite.client.plugins.eventforwarder.DTO.AnimationChangedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableGameObjectDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClickableNpcDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.ClickablePlayerDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableTileItemDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClientRequestDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
+import java.awt.Rectangle;
+import java.awt.Shape;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
@@ -83,9 +91,11 @@ public class EventForwarderPlugin extends Plugin
     @Override
     protected void startUp() throws Exception
     {
+        clientRequest = new ClientRequestDTO();
+
+        running = true;
         int port = 12345;
         serverSocket = new ServerSocket(port);
-
         Thread acceptThread = new Thread(() -> {
             log.info("Server is listening on port {}...", port);
             while (running) {
@@ -120,15 +130,15 @@ public class EventForwarderPlugin extends Plugin
         handlers.clear();
     }
 
-    @Subscribe
-    public void onGameObjectSpawned(GameObjectSpawned event)
-    {
-        RuneliteEvent dto = new GameObjectSpawnedDTO(event);
-        String json = gson.toJson(dto);
-        for (EventForwarderHandler handler : handlers) {
-            handler.send(json);
-        }
-    }
+    // @Subscribe
+    // public void onGameObjectSpawned(GameObjectSpawned event)
+    // {
+    //     RuneliteEvent dto = new GameObjectSpawnedDTO(event);
+    //     String json = gson.toJson(dto);
+    //     for (EventForwarderHandler handler : handlers) {
+    //         handler.send(json);
+    //     }
+    // }
     
     @Subscribe
     public void onAnimationChanged(AnimationChanged event)
@@ -206,10 +216,11 @@ public class EventForwarderPlugin extends Plugin
 
     @Subscribe
     public void onGameTick(GameTick tick){
-        if (config.toggleOnGameTick() == true ){
+        // System.out.println("Game tick...");
+        if (config.toggleOnGameTick() == true || clientRequest.isSendByTick() == true){
             WorldView worldView = client.getTopLevelWorldView();
-            DiffPayloadDTO diffPayloadDTO = scanTilesCreatePayloadUpdateKnownEntities(worldView);
-            if (diffPayloadDTO != null) {
+            DiffPayloadDTO diffPayloadDTO = createPayloadUpdateKnownEntities(worldView);
+            if (diffPayloadDTO.added.size() > 0 || diffPayloadDTO.removed.size() > 0 || diffPayloadDTO.updated.size() > 0) {
                 System.out.println(gson.toJson(diffPayloadDTO));
                 String json = gson.toJson(diffPayloadDTO);
                 for (EventForwarderHandler handler : handlers) {
@@ -226,6 +237,7 @@ public class EventForwarderPlugin extends Plugin
     {
         private final Socket clientSocket;
         private PrintWriter out;
+        private BufferedReader in;
 
         public EventForwarderHandler(Socket socket) {
             this.clientSocket = socket;
@@ -234,9 +246,10 @@ public class EventForwarderPlugin extends Plugin
         public void run() {
             try {
                 out = new PrintWriter(clientSocket.getOutputStream(), true);
-                BufferedReader in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
-                while ((in.readLine()) != null) {
-                    this.handleIncomingEvent(in.readLine());
+                in = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+                String incoming;
+                while ((incoming = in.readLine()) != null) {
+                    this.handleIncomingEvent(incoming);
                 }
             } catch (IOException e) {
                 e.printStackTrace();
@@ -261,9 +274,10 @@ public class EventForwarderPlugin extends Plugin
         //Handles incoming events and updates local variables
         private void handleIncomingEvent(String incoming){
             RuneliteEvent tempEvent = gson.fromJson(incoming, RuneliteEvent.class);
-            if (tempEvent.getType() == "clientRequest"){
+            if (tempEvent.getType().equals("clientRequest")){
+                System.out.println("Received a client request: " + incoming);
                 clientRequest = gson.fromJson(incoming, ClientRequestDTO.class);
-                configManager.setConfiguration(EventForwarderPlugin.CONFIG_GROUP_KEY, "onGameTick", clientRequest.isSendByTick());
+                System.out.println("ClientRequest: " + clientRequest);
                 knownEntities.clear();
             }
         }
@@ -273,11 +287,57 @@ public class EventForwarderPlugin extends Plugin
     //Start helper methods
 
 
-    //Displays coords of every game object and ground item
-    private DiffPayloadDTO scanTilesCreatePayloadUpdateKnownEntities(WorldView worldView){
+    //Create payload of clickable pixel for all requested entities
+    private DiffPayloadDTO createPayloadUpdateKnownEntities(WorldView worldView){
 
+        //Declare map of what is currently visible
         Map<String, RuneliteEvent> current = new HashMap<>();
 
+        //Handle players
+        for (Player player : worldView.players())
+        {
+            if (player != null)
+            {
+                Point computedPixel = Perspective.localToCanvas(client, player.getLocalLocation(), player.getWorldLocation().getPlane(), player.getLogicalHeight() / 2);
+                String key;
+                RuneliteEvent dto;
+                if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true) {
+                    key = "Player:" + player.getName() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
+                    dto = new ClickablePlayerDTO(player, computedPixel.getX(), computedPixel.getY());
+                } else {
+                    key = "Player:" + player.getName() + ":x=-1" + ":y=-1";
+                    dto = new ClickablePlayerDTO(player, -1, -1);
+                }
+                current.put(key, dto);
+            }
+        }
+
+        //Handle NPCs
+        NPC npcTarget = null; 
+        for (NPC npc : worldView.npcs())
+        {
+            if (npc != null && clientRequest.getTargets().contains(npc.getId()) == true)
+            {
+                npcTarget = npc;
+                break;
+            }
+        }
+        if (npcTarget != null)
+        {
+            Point computedPixel = Perspective.localToCanvas(client, npcTarget.getLocalLocation(), npcTarget.getWorldLocation().getPlane(), npcTarget.getLogicalHeight() / 2);
+            String key;
+            RuneliteEvent dto;
+            if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true) {
+                key = "NPC:" + npcTarget.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
+                dto = new ClickableNpcDTO(npcTarget, computedPixel.getX(), computedPixel.getY());
+            } else {
+                key = "NPC:" + npcTarget.getId() + ":x=-1" + ":y=-1";
+                dto = new ClickableNpcDTO(npcTarget, -1, -1);
+            }
+            current.put(key, dto);
+        }
+
+        //Handle GameObjects and TileItems (stuff that has to be checked tile by tile)
         Scene scene = worldView.getScene();
         Tile[][][] tiles = scene.getTiles();
 
@@ -305,12 +365,29 @@ public class EventForwarderPlugin extends Plugin
                 {
                     for (GameObject gameObject : gameObjects)
                     {   
-                        if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()) && clientRequest.getTargets().contains(gameObject.getId()))
+                        if (gameObject != null && gameObject.getSceneMinLocation().equals(tile.getSceneLocation()))
                         {
-                            // System.out.println("Game Object found. ID: " + gameObject.getId() + " X: " + gameObject.getX() + " Y: " + gameObject.getY());
-                            String key = "GameObject:" + gameObject.getId() + ":x=" +x + ":y=" + y;
-                            RuneliteEvent dto = new ClickableGameObjectDTO(gameObject, x, y);
-                            current.put(key, dto);
+                            if (clientRequest != null && clientRequest.getTargets().contains(gameObject.getId()) == true) {
+                                // System.out.println("Game Object found. ID: " + gameObject.getId() + " X: " + gameObject.getX() + " Y: " + gameObject.getY());
+                                // String key = "GameObject:" + gameObject.getId() + ":x=" +x + ":y=" + y;
+                                // Point computedPixel = Perspective.localToCanvas(client, gameObject.getLocalLocation(), gameObject.getWorldLocation().getPlane(), 0);
+                                Shape clickbox = gameObject.getClickbox();
+                                if (clickbox != null) {
+                                    Rectangle bounds = clickbox.getBounds();
+                                    int centerX = (int) bounds.getCenterX();
+                                    int centerY = (int) bounds.getCenterY();
+                                    String key;
+                                    RuneliteEvent dto;
+                                    if (isOnScreen(centerX, centerY) == true){
+                                        key = "GameObject:" + gameObject.getId() + ":x=" + centerX + ":y=" + centerY;
+                                        dto = new ClickableGameObjectDTO(gameObject, centerX, centerY);
+                                    } else {
+                                        key = "GameObject:" + gameObject.getId() + ":x=-1" + ":y=-1";
+                                        dto = new ClickableGameObjectDTO(gameObject, -1, -1);
+                                    }
+                                    current.put(key, dto);
+                                }
+                            }
                         }
                     }
                 }
@@ -324,18 +401,29 @@ public class EventForwarderPlugin extends Plugin
                         while (currentTopLayer instanceof TileItem)
                         {
                             TileItem item = (TileItem) currentTopLayer;
-                            // System.out.println("Ground Item found. ID: " + item.getId() + " X: " + x + " Y: " + y);
-                            String key = "TileItem:" + item.getId() + ":x=" +x + ":y=" + y;
-                            RuneliteEvent dto = new ClickableTileItemDTO(item, x, y);
-                            current.put(key, dto);
+                            if (clientRequest.getTargets().contains(item.getId()) == true) {
+                                // System.out.println("Ground Item found. ID: " + item.getId() + " X: " + x + " Y: " + y);
+                                // String key = "TileItem:" + item.getId() + ":x=" + x + ":y=" + y;
+                                Point computedPixel = Perspective.localToCanvas(client, tile.getLocalLocation(), worldView.getPlane(), 0);
+                                String key;
+                                RuneliteEvent dto;
+                                if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true){
+                                    key = "TileItem:" + item.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
+                                    dto = new ClickableTileItemDTO(item, computedPixel.getX(), computedPixel.getY());
+                                } else {
+                                    key = "TileItem:" + item.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
+                                    dto = new ClickableTileItemDTO(item, computedPixel.getX(), computedPixel.getY());
+                                }
+                                current.put(key, dto);
+                            }
                             currentTopLayer = currentTopLayer.getNext();
                         }
                     }
                 }
             }
         }
-        // return clickableDTOs;
-        // Diffing
+
+        // Compare what currently can be found against our last scan and create a new map + payload object
         List<RuneliteEvent> added = new ArrayList<>();
         List<String> removed = new ArrayList<>();
         List<RuneliteEvent> updated = new ArrayList<>();
@@ -351,7 +439,7 @@ public class EventForwarderPlugin extends Plugin
             }
             else if (!dto.equals(knownEntities.get(key)))
             {
-                ClickableDTO tempDTO = (ClickableDTO) dto; 
+                // ClickableDTO tempDTO = (ClickableDTO) dto; 
                 // if (tempDTO.getClickableType().equalsIgnoreCase("Clickable game object")){
                 //     tempDTO = (ClickableGameObjectDTO) dto;
                 //     System.out.println("Mismatch on key: " + key);
@@ -370,21 +458,28 @@ public class EventForwarderPlugin extends Plugin
                 removed.add(oldKey);
             }
         }
-
-        //Check if our lists have anything in them. If not, return null so we don't waste time sending an empty message to the client.
-        if (added.size() == 0 && removed.size() == 0 && updated.size() == 0) {
-            return null;
-        } else {
-            // Create Payload
-            DiffPayloadDTO payload = new DiffPayloadDTO(added, removed, updated);
-    
-            // Update state
-            knownEntities.clear();
-            knownEntities.putAll(current);
-    
-            //Return payload
-            return payload;
+        
+        
+        if (added.size() > 0 || removed.size() > 0 || updated.size() > 0) {
+            System.out.println("Something's going in the payload: " + added + removed + updated);
         }
+        // Create Payload
+        DiffPayloadDTO payload = new DiffPayloadDTO(added, removed, updated);
+
+        // Update state
+        knownEntities.clear();
+        knownEntities.putAll(current);
+
+        //Return payload
+        return payload;
+    }
+
+    private boolean isOnScreen(int x, int y) {
+        if (x <= client.getCanvasWidth() && y <= client.getCanvasHeight()){
+            return true;
+        }
+
+        return false;
     }
         //End helper methods
 }

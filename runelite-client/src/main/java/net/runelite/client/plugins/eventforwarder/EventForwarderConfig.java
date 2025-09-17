@@ -7,6 +7,8 @@ import net.runelite.client.config.ConfigGroup;
 @ConfigGroup(EventForwarderPlugin.CONFIG_GROUP_KEY)
 public interface EventForwarderConfig extends Config {
 
+	public static boolean toggleOnGameTick = false;
+
     @ConfigItem(
 		keyName = "onGameTick",
 		name = "onGameTick",
@@ -15,6 +17,6 @@ public interface EventForwarderConfig extends Config {
 	)
 	default boolean toggleOnGameTick()
 	{
-		return false;
+		return toggleOnGameTick;
 	}   
 }

@@ -109,13 +109,13 @@ public class DiagnosticsPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick tick)
     {
+        System.out.println("Mouse Canvas position: X:" + client.getMouseCanvasPosition().getX() + " Y:" + client.getMouseCanvasPosition().getY());
         if (config.toggleOnGameTick() == true) {
             
             player = client.getLocalPlayer();
             worldView = client.getTopLevelWorldView();
             Actor actor = player;
             
-            System.out.println("Mouse Canvas position: X:" + client.getMouseCanvasPosition().getX() + " Y:" + client.getMouseCanvasPosition().getY());
 
             //Display rough center of my player model
             Point computedPixelOfPlayer = Perspective.localToCanvas(client, player.getLocalLocation(),player.getWorldLocation().getPlane(),actor.getLogicalHeight() / 2);

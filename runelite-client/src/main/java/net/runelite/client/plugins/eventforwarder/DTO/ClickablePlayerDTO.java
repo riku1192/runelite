@@ -1,10 +1,7 @@
 package net.runelite.client.plugins.eventforwarder.DTO;
 
-import net.runelite.api.Client;
 import net.runelite.api.Player;
 import net.runelite.api.PlayerComposition;
-import net.runelite.api.Perspective;
-import net.runelite.api.Point;
 
 public class ClickablePlayerDTO extends ClickableDTO {
     String playerName;
@@ -12,15 +9,14 @@ public class ClickablePlayerDTO extends ClickableDTO {
     Integer playerGender;
     int[] playerEquipmentIds;
     
-    public ClickablePlayerDTO(Player player, Client client){
+    public ClickablePlayerDTO(Player player, int x, int y){
 
         //Set super fields
         setType("Clickable");
         setClickableType("Clickable player");
         setClickableId(player.getId());
-        Point playerCoords = Perspective.localToCanvas(client, player.getLocalLocation(), player.getWorldLocation().getPlane(), player.getLogicalHeight() / 2);
-        setClickableX(playerCoords.getX());
-        setClickableY(playerCoords.getY());
+        setClickableX(x);
+        setClickableY(y);
 
         //Set this DTO fields
         playerName = player.getName();
