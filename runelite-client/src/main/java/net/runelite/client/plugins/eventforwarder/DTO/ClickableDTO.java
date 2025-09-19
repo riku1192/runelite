@@ -1,12 +1,13 @@
 package net.runelite.client.plugins.eventforwarder.DTO;
 
-import java.util.Objects;
-
 public class ClickableDTO extends RuneliteEvent {
     String clickableType;
     Integer clickableId;
     Integer clickableX;
     Integer clickableY;
+    Integer tileX;
+    Integer tileY;
+    Integer tileZ;
 
     public void setClickableType(String clickableType){
         this.clickableType = clickableType;
@@ -40,24 +41,35 @@ public class ClickableDTO extends RuneliteEvent {
         return clickableY;
     }
 
-    public String toString(){
-        return super.toString() + ", [clickableType="+ clickableType + "]" 
-                    + ", [clickableId="+ clickableId + "]" 
-                    + ", [clickableX="+ clickableX + "]" 
-                    + ", [clickableY="+ clickableY + "]";
+    public Integer getTileX() {
+        return tileX;
     }
-    
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof RuneliteEvent)) return false;
-        RuneliteEvent that = (RuneliteEvent) o;
-        return Objects.equals(type, that.type);
+
+    public void setTileX(Integer tileX) {
+        this.tileX = tileX;
+    }
+
+    public Integer getTileY() {
+        return tileY;
+    }
+
+    public void setTileY(Integer tileY) {
+        this.tileY = tileY;
+    }
+
+    public Integer getTileZ() {
+        return tileZ;
+    }
+
+    public void setTileZ(Integer tileZ) {
+        this.tileZ = tileZ;
     }
 
     @Override
-    public int hashCode() {
-        return Objects.hash(type);
+    public String toString() {
+        return "ClickableDTO [type=" + type + ", clickableType=" + clickableType + ", clickableId=" + clickableId
+                + ", clickableX=" + clickableX + ", clickableY=" + clickableY + ", tileX=" + tileX + ", tileY=" + tileY
+                + ", tileZ=" + tileZ + "]";
     }
 
 }

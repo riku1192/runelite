@@ -41,6 +41,7 @@ import net.runelite.client.plugins.eventforwarder.DTO.ClientRequestDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
+import java.awt.Canvas;
 import java.awt.Rectangle;
 import java.awt.Shape;
 import java.io.BufferedReader;
@@ -302,8 +303,10 @@ public class EventForwarderPlugin extends Plugin
                 String key;
                 RuneliteEvent dto;
                 if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true) {
-                    key = "Player:" + player.getName() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
-                    dto = new ClickablePlayerDTO(player, computedPixel.getX(), computedPixel.getY());
+                    //Track absolute mouse position when hovering canvas
+                    java.awt.Point mouseScreen = toScreenCoords(client, new java.awt.Point(computedPixel.getX(), computedPixel.getY()));
+                    key = "Player:" + player.getName() + ":x=" + (int) mouseScreen.getX() + ":y=" + (int) mouseScreen.getY();
+                    dto = new ClickablePlayerDTO(player, (int) mouseScreen.getX(), (int) mouseScreen.getY());
                 } else {
                     key = "Player:" + player.getName() + ":x=-1" + ":y=-1";
                     dto = new ClickablePlayerDTO(player, -1, -1);
@@ -328,8 +331,9 @@ public class EventForwarderPlugin extends Plugin
             String key;
             RuneliteEvent dto;
             if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true) {
-                key = "NPC:" + npcTarget.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
-                dto = new ClickableNpcDTO(npcTarget, computedPixel.getX(), computedPixel.getY());
+                java.awt.Point mouseScreen = toScreenCoords(client, new java.awt.Point(computedPixel.getX(), computedPixel.getY()));
+                key = "NPC:" + npcTarget.getId() + ":x=" + (int) mouseScreen.getX() + ":y=" + (int) mouseScreen.getY();
+                dto = new ClickableNpcDTO(npcTarget, (int) mouseScreen.getX(), (int) mouseScreen.getY());
             } else {
                 key = "NPC:" + npcTarget.getId() + ":x=-1" + ":y=-1";
                 dto = new ClickableNpcDTO(npcTarget, -1, -1);
@@ -379,11 +383,12 @@ public class EventForwarderPlugin extends Plugin
                                     String key;
                                     RuneliteEvent dto;
                                     if (isOnScreen(centerX, centerY) == true){
-                                        key = "GameObject:" + gameObject.getId() + ":x=" + centerX + ":y=" + centerY;
-                                        dto = new ClickableGameObjectDTO(gameObject, centerX, centerY);
+                                        java.awt.Point mouseScreen = toScreenCoords(client, new java.awt.Point(centerX, centerY));
+                                        key = "GameObject:" + gameObject.getId() + ":x=" + (int) mouseScreen.getX() + ":y=" + (int) mouseScreen.getY();
+                                        dto = new ClickableGameObjectDTO(gameObject, (int) mouseScreen.getX(), (int) mouseScreen.getY(), x, y, z);
                                     } else {
                                         key = "GameObject:" + gameObject.getId() + ":x=-1" + ":y=-1";
-                                        dto = new ClickableGameObjectDTO(gameObject, -1, -1);
+                                        dto = new ClickableGameObjectDTO(gameObject, -1, -1, x, y, z);
                                     }
                                     current.put(key, dto);
                                 }
@@ -408,11 +413,12 @@ public class EventForwarderPlugin extends Plugin
                                 String key;
                                 RuneliteEvent dto;
                                 if (isOnScreen(computedPixel.getX(), computedPixel.getY()) == true){
-                                    key = "TileItem:" + item.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
-                                    dto = new ClickableTileItemDTO(item, computedPixel.getX(), computedPixel.getY());
+                                        java.awt.Point mouseScreen = toScreenCoords(client, new java.awt.Point(computedPixel.getX(), computedPixel.getY()));
+                                    key = "TileItem:" + item.getId() + ":x=" + (int) mouseScreen.getX() + ":y=" + (int) mouseScreen.getY();
+                                    dto = new ClickableTileItemDTO(item, (int) mouseScreen.getX(), (int) mouseScreen.getY(), x, y, z);
                                 } else {
-                                    key = "TileItem:" + item.getId() + ":x=" + computedPixel.getX() + ":y=" + computedPixel.getY();
-                                    dto = new ClickableTileItemDTO(item, computedPixel.getX(), computedPixel.getY());
+                                    key = "TileItem:" + item.getId() + ":x=-1" + ":y=-1";
+                                    dto = new ClickableTileItemDTO(item, -1, -1, x, y, z);
                                 }
                                 current.put(key, dto);
                             }
@@ -481,5 +487,38 @@ public class EventForwarderPlugin extends Plugin
 
         return false;
     }
+    
+    /**
+     * Converts a canvas-local point (e.g. from client.getMouseCanvasPosition())
+     * into absolute screen coordinates.
+     *
+     * @param client RuneLite client
+     * @param canvasPoint Point relative to the canvas (0,0 = top-left of game area)
+     * @return Point in absolute screen coordinates, or null if canvas is not visible
+     */
+    public static java.awt.Point toScreenCoords(Client client, java.awt.Point canvasPoint)
+    {
+        if (client == null || canvasPoint == null)
+        {
+            return null;
+        }
+
+        Canvas canvas = client.getCanvas();
+
+        try
+        {
+            java.awt.Point canvasOnScreen = canvas.getLocationOnScreen();
+            return new java.awt.Point(
+                (int) canvasOnScreen.getX() + (int) canvasPoint.getX(),
+                (int) canvasOnScreen.getY() + (int) canvasPoint.getY()
+            );
+        }
+        catch (Exception e)
+        {
+            // Happens if RuneLite window is minimized or canvas not displayable
+            return null;
+        }
+    }
+
         //End helper methods
 }

@@ -17,6 +17,9 @@ public class ClickablePlayerDTO extends ClickableDTO {
         setClickableId(player.getId());
         setClickableX(x);
         setClickableY(y);
+        setTileX(player.getWorldLocation().getX());
+        setTileY(player.getWorldLocation().getY());
+        setTileZ(player.getWorldLocation().getPlane());
 
         //Set this DTO fields
         playerName = player.getName();

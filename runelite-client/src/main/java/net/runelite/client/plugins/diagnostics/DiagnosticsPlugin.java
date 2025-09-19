@@ -1,6 +1,10 @@
 package net.runelite.client.plugins.diagnostics;
 
 import com.google.inject.Provides;
+
+import java.awt.Canvas;
+import java.awt.Dimension;
+
 import javax.inject.Inject;
 
 import net.runelite.api.*;
@@ -109,7 +113,21 @@ public class DiagnosticsPlugin extends Plugin
     @Subscribe
     public void onGameTick(GameTick tick)
     {
+        //Track mouse positon on canvas
         System.out.println("Mouse Canvas position: X:" + client.getMouseCanvasPosition().getX() + " Y:" + client.getMouseCanvasPosition().getY());
+
+        //Track absolute mouse position when hovering canvas
+        Point mouseCanvas = client.getMouseCanvasPosition();
+
+        java.awt.Point mouseScreen = toScreenCoords(client, 
+            new java.awt.Point(mouseCanvas.getX(), mouseCanvas.getY()));
+
+        if (mouseScreen != null)
+        {
+            System.out.println("Mouse on screen: " + mouseScreen);
+        }
+
+        //Main display logic
         if (config.toggleOnGameTick() == true) {
             
             player = client.getLocalPlayer();
@@ -253,6 +271,38 @@ public class DiagnosticsPlugin extends Plugin
             // if (menuAction == MenuAction.ITEM_USE_ON_GAME_OBJECT) {
             //     // Handle item use on game object
             // }
+        }
+    }
+
+    /**
+     * Converts a canvas-local point (e.g. from client.getMouseCanvasPosition())
+     * into absolute screen coordinates.
+     *
+     * @param client RuneLite client
+     * @param canvasPoint Point relative to the canvas (0,0 = top-left of game area)
+     * @return Point in absolute screen coordinates, or null if canvas is not visible
+     */
+    public static java.awt.Point toScreenCoords(Client client, java.awt.Point canvasPoint)
+    {
+        if (client == null || canvasPoint == null)
+        {
+            return null;
+        }
+
+        Canvas canvas = client.getCanvas();
+
+        try
+        {
+            java.awt.Point canvasOnScreen = canvas.getLocationOnScreen();
+            return new java.awt.Point(
+                (int) canvasOnScreen.getX() + (int) canvasPoint.getX(),
+                (int) canvasOnScreen.getY() + (int) canvasPoint.getY()
+            );
+        }
+        catch (Exception e)
+        {
+            // Happens if RuneLite window is minimized or canvas not displayable
+            return null;
         }
     }
 

@@ -12,6 +12,10 @@ public class ClickableNpcDTO extends ClickableDTO {
         setClickableId(npc.getId());
         setClickableX(x);
         setClickableY(y);
+        setTileX(npc.getWorldLocation().getX());
+        setTileY(npc.getWorldLocation().getY());
+        setTileZ(npc.getWorldLocation().getPlane());
+
 
         //Set this DTO fields
         npcName = npc.getName();

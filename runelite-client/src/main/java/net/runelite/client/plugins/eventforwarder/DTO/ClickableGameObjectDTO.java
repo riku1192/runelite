@@ -6,13 +6,16 @@ import net.runelite.api.GameObject;
 
 public class ClickableGameObjectDTO extends ClickableDTO {
     
-    public ClickableGameObjectDTO(GameObject gameObject, int x, int y){
+    public ClickableGameObjectDTO(GameObject gameObject, int x, int y, int tileX, int tileY, int tileZ){
         //Set super fields
         setType("Clickable");
         setClickableType("Clickable game object");
         setClickableId(gameObject.getId());
         setClickableX(x);
         setClickableY(y);
+        setTileX(tileX);
+        setTileY(tileY);
+        setTileZ(tileZ);
 
         //Set this DTO fields
     }
