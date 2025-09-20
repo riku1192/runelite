@@ -8,19 +8,12 @@ import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 public class DiffPayloadDTO extends RuneliteEvent {
 
     List<RuneliteEvent> added = new ArrayList<>();
-    List<String> removed = new ArrayList<>();
-    List<RuneliteEvent> updated = new ArrayList<>();
+    List<RuneliteEvent> removed = new ArrayList<>();
 
-    public DiffPayloadDTO(List<RuneliteEvent> added, List<String> removed, List<RuneliteEvent> updated) {
+    public DiffPayloadDTO(List<RuneliteEvent> added, List<RuneliteEvent> removed, List<RuneliteEvent> updated) {
         this.setType("DiffPayload");
         this.added = added;
         this.removed = removed;
-        this.updated = updated;
-    }
-
-    @Override
-    public String toString() {
-        return "DiffPayloadDTO [added=" + added + ", removed=" + removed + ", updated=" + updated + "]";
     }
 
     public List<RuneliteEvent> getAdded() {
@@ -31,20 +24,17 @@ public class DiffPayloadDTO extends RuneliteEvent {
         this.added = added;
     }
 
-    public List<String> getRemoved() {
+    public List<RuneliteEvent> getRemoved() {
         return removed;
     }
 
-    public void setRemoved(List<String> removed) {
+    public void setRemoved(List<RuneliteEvent> removed) {
         this.removed = removed;
     }
 
-    public List<RuneliteEvent> getUpdated() {
-        return updated;
-    }
-
-    public void setUpdated(List<RuneliteEvent> updated) {
-        this.updated = updated;
+    @Override
+    public String toString() {
+        return "DiffPayloadDTO [type=" + super.getType() + ", added=" + added + ", removed=" + removed + "]";
     }
 
     @Override
@@ -53,7 +43,6 @@ public class DiffPayloadDTO extends RuneliteEvent {
         int result = 1;
         result = prime * result + ((added == null) ? 0 : added.hashCode());
         result = prime * result + ((removed == null) ? 0 : removed.hashCode());
-        result = prime * result + ((updated == null) ? 0 : updated.hashCode());
         return result;
     }
 
@@ -76,12 +65,8 @@ public class DiffPayloadDTO extends RuneliteEvent {
                 return false;
         } else if (!removed.equals(other.removed))
             return false;
-        if (updated == null) {
-            if (other.updated != null)
-                return false;
-        } else if (!updated.equals(other.updated))
-            return false;
         return true;
     }
+
 }
 

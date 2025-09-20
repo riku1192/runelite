@@ -115,20 +115,22 @@ public class DiagnosticsPlugin extends Plugin
     {
         //Track mouse positon on canvas
         System.out.println("Mouse Canvas position: X:" + client.getMouseCanvasPosition().getX() + " Y:" + client.getMouseCanvasPosition().getY());
-
-        //Track absolute mouse position when hovering canvas
-        Point mouseCanvas = client.getMouseCanvasPosition();
-
-        java.awt.Point mouseScreen = toScreenCoords(client, 
-            new java.awt.Point(mouseCanvas.getX(), mouseCanvas.getY()));
-
-        if (mouseScreen != null)
-        {
-            System.out.println("Mouse on screen: " + mouseScreen);
-        }
-
+        
         //Main display logic
         if (config.toggleOnGameTick() == true) {
+            
+            System.out.println("Camera X: " + client.getCameraX() + " Camera Y: " + client.getCameraY()  + " Camera Z: " + client.getCameraZ()  + " Camera Yaw: " + client.getCameraYaw());
+    
+            //Track absolute mouse position when hovering canvas
+            Point mouseCanvas = client.getMouseCanvasPosition();
+    
+            java.awt.Point mouseScreen = toScreenCoords(client, 
+                new java.awt.Point(mouseCanvas.getX(), mouseCanvas.getY()));
+    
+            if (mouseScreen != null)
+            {
+                System.out.println("Mouse on screen: " + mouseScreen);
+            }
             
             player = client.getLocalPlayer();
             worldView = client.getTopLevelWorldView();

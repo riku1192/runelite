@@ -7,14 +7,19 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameObject;
+import net.runelite.api.InventoryID;
+import net.runelite.api.Item;
+import net.runelite.api.ItemContainer;
 import net.runelite.api.ItemLayer;
 import net.runelite.api.NPC;
 import net.runelite.api.Player;
 import net.runelite.api.Point;
+import net.runelite.api.Prayer;
 import net.runelite.api.Scene;
 import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.WorldView;
+import net.runelite.api.coords.WorldPoint;
 import net.runelite.api.Node;
 import net.runelite.api.Perspective;
 import net.runelite.api.events.AnimationChanged;
@@ -22,6 +27,7 @@ import net.runelite.api.events.GameObjectSpawned;
 import net.runelite.api.events.GameTick;
 import net.runelite.api.events.WidgetClosed;
 import net.runelite.api.events.WidgetLoaded;
+import net.runelite.api.Varbits;
 import java.awt.geom.Rectangle2D;
 import net.runelite.api.widgets.Widget;
 import net.runelite.api.widgets.WidgetID;
@@ -39,6 +45,8 @@ import net.runelite.client.plugins.eventforwarder.DTO.ClickablePlayerDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClickableTileItemDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.ClientRequestDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
+import net.runelite.client.plugins.eventforwarder.DTO.InventoryItem;
+import net.runelite.client.plugins.eventforwarder.DTO.PlayerStateDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
 
 import java.awt.Canvas;
@@ -73,6 +81,8 @@ public class EventForwarderPlugin extends Plugin
 	static final String CONFIG_GROUP_KEY = "eventforwarderconfig";
     private volatile boolean running = true;
     private static volatile ClientRequestDTO clientRequest;
+    private boolean localPlayerRunningToDestination;
+	private WorldPoint prevLocalPlayerLocation;
     
     @Inject
     private Client client;
@@ -219,15 +229,45 @@ public class EventForwarderPlugin extends Plugin
     public void onGameTick(GameTick tick){
         // System.out.println("Game tick...");
         if (config.toggleOnGameTick() == true || clientRequest.isSendByTick() == true){
+            PlayerStateDTO playerState = new PlayerStateDTO();
             WorldView worldView = client.getTopLevelWorldView();
+            //DiffPayload logic
             DiffPayloadDTO diffPayloadDTO = createPayloadUpdateKnownEntities(worldView);
-            if (diffPayloadDTO.added.size() > 0 || diffPayloadDTO.removed.size() > 0 || diffPayloadDTO.updated.size() > 0) {
+            if (diffPayloadDTO.added.size() > 0 || diffPayloadDTO.removed.size() > 0) {
                 System.out.println(gson.toJson(diffPayloadDTO));
                 String json = gson.toJson(diffPayloadDTO);
                 for (EventForwarderHandler handler : handlers) {
                     handler.send(json);
                 }
             }
+
+            //PlayerState logic
+            Prayer[] activePrayers = getActivePrayers(client);
+            playerState.setActivePrayers(activePrayers);
+            if (activePrayers.length > 0) {
+                playerState.setPrayerActive(true);
+            } else {
+                playerState.setPrayerActive(false);
+            }
+            WorldPoint playerPos = client.getLocalPlayer().getWorldLocation();
+            playerState.setPlayerX(playerPos.getX());
+            playerState.setPlayerY(playerPos.getY());
+            playerState.setPlayerZ(playerPos.getPlane());
+            playerState.setCameraYaw(client.getCameraYaw());
+            playerState.setRunning(isRunning());
+            playerState.setRunEnergy(client.getEnergy()); 
+            ItemContainer inventory = client.getItemContainer(InventoryID.INVENTORY);
+            if (inventory != null) {
+                Item[] items = inventory.getItems();
+                int i = 0;
+                for (Item item : items) {
+                    i++;
+                    if (item.getId() != -1) { 
+                        playerState.addInventoryItem(new InventoryItem(i, item.getId(), item.getQuantity()));
+                    }
+                }
+            }
+            playerState.setPlayerEquipmentIds(client.getLocalPlayer().getPlayerComposition().getEquipmentIds());
         }
     }
 
@@ -431,7 +471,7 @@ public class EventForwarderPlugin extends Plugin
 
         // Compare what currently can be found against our last scan and create a new map + payload object
         List<RuneliteEvent> added = new ArrayList<>();
-        List<String> removed = new ArrayList<>();
+        List<RuneliteEvent> removed = new ArrayList<>();
         List<RuneliteEvent> updated = new ArrayList<>();
 
         for (Map.Entry<String, RuneliteEvent> entry : current.entrySet())
@@ -453,7 +493,8 @@ public class EventForwarderPlugin extends Plugin
                 //     tempDTO = (ClickableGameObjectDTO) knownEntities.get(key);
                 //     System.out.println("Old DTO: " + tempDTO.toString());
                 // }
-                updated.add(dto);
+                added.add(dto);
+                removed.add(knownEntities.get(key));
             }
         }
 
@@ -461,7 +502,7 @@ public class EventForwarderPlugin extends Plugin
         {
             if (!current.containsKey(oldKey))
             {
-                removed.add(oldKey);
+                removed.add(knownEntities.get(oldKey));
             }
         }
         
@@ -518,6 +559,41 @@ public class EventForwarderPlugin extends Plugin
             // Happens if RuneLite window is minimized or canvas not displayable
             return null;
         }
+    }
+
+    /**
+     * Returns an array of all currently active prayers.
+     *
+     * @param client The RuneLite client instance
+     * @return Array of active prayers
+     */
+    public static Prayer[] getActivePrayers(Client client)
+    {
+        ArrayList<Prayer> activePrayers = new ArrayList<>();
+
+        for (Prayer prayer : Prayer.values())
+        {
+            Integer varbit = prayer.getVarbit(); // Each Prayer knows its varbit
+            if (varbit != null && client.getVarbitValue(varbit) == 1)
+            {
+                activePrayers.add(prayer);
+            }
+        }
+
+        return activePrayers.toArray(new Prayer[0]);
+    }
+
+    public boolean isRunning(){
+        localPlayerRunningToDestination = false;
+
+        localPlayerRunningToDestination =
+			prevLocalPlayerLocation != null &&
+			client.getLocalDestinationLocation() != null &&
+			prevLocalPlayerLocation.distanceTo(client.getLocalPlayer().getWorldLocation()) > 1;
+
+		prevLocalPlayerLocation = client.getLocalPlayer().getWorldLocation();
+
+        return localPlayerRunningToDestination;
     }
 
         //End helper methods
