@@ -1,6 +1,7 @@
 package net.runelite.client.plugins.eventforwarder.DTO;
 
 import java.util.List;
+import java.util.Map;
 
 import net.runelite.api.Prayer;
 
@@ -17,7 +18,9 @@ public class PlayerStateDTO extends RuneliteEvent {
     int runEnergy;
     boolean isPrayerActive;
     Prayer[] activePrayers;
-    
+    boolean isLoggedIn;
+    Map<String, Integer> skills;
+
     public PlayerStateDTO() {
         super.setType("PlayerState");
     }
@@ -106,4 +109,19 @@ public class PlayerStateDTO extends RuneliteEvent {
         this.activePrayers = activePrayers;
     }
     
+    public boolean isLoggedIn() {
+        return isLoggedIn;
+    }
+
+    public void setLoggedIn(boolean isLoggedIn) {
+        this.isLoggedIn = isLoggedIn;
+    }
+
+    public Map<String, Integer> getSkills() {
+        return skills;
+    }
+
+    public void setSkills(Map<String, Integer> skills) {
+        this.skills = skills;
+    }
 }

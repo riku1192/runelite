@@ -7,6 +7,7 @@ import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Constants;
 import net.runelite.api.GameObject;
+import net.runelite.api.GameState;
 import net.runelite.api.InventoryID;
 import net.runelite.api.Item;
 import net.runelite.api.ItemContainer;
@@ -48,6 +49,7 @@ import net.runelite.client.plugins.eventforwarder.DTO.GameObjectSpawnedDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.InventoryItem;
 import net.runelite.client.plugins.eventforwarder.DTO.PlayerStateDTO;
 import net.runelite.client.plugins.eventforwarder.DTO.RuneliteEvent;
+import net.runelite.api.Skill;
 
 import java.awt.Canvas;
 import java.awt.Rectangle;
@@ -231,6 +233,7 @@ public class EventForwarderPlugin extends Plugin
         if (config.toggleOnGameTick() == true || clientRequest.isSendByTick() == true){
             PlayerStateDTO playerState = new PlayerStateDTO();
             WorldView worldView = client.getTopLevelWorldView();
+
             //DiffPayload logic
             DiffPayloadDTO diffPayloadDTO = createPayloadUpdateKnownEntities(worldView);
             if (diffPayloadDTO.added.size() > 0 || diffPayloadDTO.removed.size() > 0) {
@@ -268,6 +271,8 @@ public class EventForwarderPlugin extends Plugin
                 }
             }
             playerState.setPlayerEquipmentIds(client.getLocalPlayer().getPlayerComposition().getEquipmentIds());
+            playerState.setLoggedIn(client.getGameState() == GameState.LOGGED_IN);
+            playerState.setSkills(getAllSkillLevels(client));
         }
     }
 
@@ -594,6 +599,25 @@ public class EventForwarderPlugin extends Plugin
 		prevLocalPlayerLocation = client.getLocalPlayer().getWorldLocation();
 
         return localPlayerRunningToDestination;
+    }
+
+    /**
+     * Returns a map of all skills and their current levels.
+     *
+     * @param client RuneLite client
+     * @param boosted If true, return boosted levels; otherwise return base levels
+     * @return Map of Skill -> level
+     */
+    public static Map<String, Integer> getAllSkillLevels(Client client)
+    {
+        Map<String, Integer> levels = new HashMap<>();
+
+        for (Skill skill : Skill.values())
+        {
+            levels.put(skill.getName(), client.getRealSkillLevel(skill));
+        }
+
+        return levels;
     }
 
         //End helper methods
